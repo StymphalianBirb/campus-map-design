@@ -470,7 +470,7 @@
 <footer>Toi Ohomai Institute of Technology &mdash; Student Hub &mdash; Campus Map Feature Prototype</footer>
 
 <script>
-const blocks = [
+  const blocks = [
     { name: 'A-Block', x: 52.7, y: 61.6, desc: 'Administration and student services. Includes the main reception and student finance office.' },
     { name: 'B-Block', x: 43.3, y: 61.6, desc: 'Lecture theatres and general classrooms. Home to several computing and IT labs.' },
     { name: 'C-Block', x: 34.9, y: 58.1, desc: 'Science and technology workshops. Includes specialised laboratory spaces.' },
@@ -487,9 +487,10 @@ const blocks = [
     { name: 'V-Block', x: 66.3, y: 66.8, desc: 'Vocational training centre. Trades and applied technology programmes.' },
     { name: 'W-Block', x: 80.3, y: 31.1, desc: 'Whanau and cultural support centre. Māori and Pasifika student services.' },
     { name: 'Z-Block', x: 93.6, y: 11.0, desc: 'Facilities and maintenance. Security office also located here.' },
-];
+  ];
 
   let selectedBlock = null;
+  let devMode = false;
 
   const pinsLayer   = document.getElementById('pins-layer');
   const blocksList  = document.getElementById('blocks-list');
@@ -500,8 +501,57 @@ const blocks = [
   const resultName  = document.getElementById('result-name');
   const resultDesc  = document.getElementById('result-desc');
   const resultTag   = document.getElementById('result-tag');
+  const mapWrap     = document.getElementById('map-wrap');
 
-  // Build pins
+  // ── DEV MODE OVERLAY ──
+  const devBanner = document.createElement('div');
+  devBanner.style.cssText = `
+    display:none; position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+    background:#1a1a2e; color:#f2a900; font-family:monospace; font-size:0.85rem;
+    padding:10px 20px; border-radius:8px; z-index:9999; text-align:center;
+    box-shadow:0 4px 20px rgba(0,0,0,0.4); pointer-events:none;
+  `;
+  devBanner.innerHTML = '🛠️ DEV MODE — Click anywhere on the map to get coordinates';
+  document.body.appendChild(devBanner);
+
+  const devCoords = document.createElement('div');
+  devCoords.style.cssText = `
+    display:none; position:fixed; bottom:60px; left:50%; transform:translateX(-50%);
+    background:#1a1a2e; color:white; font-family:monospace; font-size:0.9rem;
+    padding:8px 16px; border-radius:8px; z-index:9999; text-align:center;
+    box-shadow:0 4px 20px rgba(0,0,0,0.4);
+  `;
+  document.body.appendChild(devCoords);
+
+  // crosshair cursor in dev mode
+  const devStyle = document.createElement('style');
+  devStyle.id = 'dev-style';
+  document.head.appendChild(devStyle);
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'd' || e.key === 'D') {
+      devMode = !devMode;
+      devBanner.style.display = devMode ? 'block' : 'none';
+      devCoords.style.display = 'none';
+      devStyle.textContent = devMode ? '#map-wrap { cursor: crosshair !important; }' : '';
+    }
+  });
+
+  mapWrap.addEventListener('click', e => {
+    if (!devMode) return;
+    const rect = mapWrap.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width  * 100).toFixed(1);
+    const y = ((e.clientY - rect.top)  / rect.height * 100).toFixed(1);
+    devCoords.style.display = 'block';
+    devCoords.innerHTML = `x: <strong>${x}</strong>, y: <strong>${y}</strong> &nbsp;—&nbsp; <span style="color:#aaa">click to copy</span>`;
+    devCoords.style.cursor = 'pointer';
+    devCoords.onclick = () => {
+      navigator.clipboard.writeText(`x: ${x}, y: ${y}`);
+      devCoords.innerHTML = `✅ Copied! x: <strong>${x}</strong>, y: <strong>${y}</strong>`;
+    };
+  });
+
+  // ── BUILD PINS ──
   blocks.forEach((block, i) => {
     const pin = document.createElement('div');
     pin.className = 'pin';
@@ -509,11 +559,11 @@ const blocks = [
     pin.style.left = block.x + '%';
     pin.style.top  = block.y + '%';
     pin.innerHTML  = `<div class="pin-icon"></div><div class="pin-label">${block.name}</div>`;
-    pin.addEventListener('click', () => selectBlock(i));
+    pin.addEventListener('click', () => { if (!devMode) selectBlock(i); });
     pinsLayer.appendChild(pin);
   });
 
-  // Build sidebar list
+  // ── BUILD SIDEBAR LIST ──
   blocks.forEach((block, i) => {
     const item = document.createElement('div');
     item.className = 'block-item';
@@ -524,7 +574,6 @@ const blocks = [
   });
 
   function selectBlock(i) {
-    // clear previous
     if (selectedBlock !== null) {
       document.getElementById(`pin-${selectedBlock}`)?.classList.remove('highlighted');
       document.getElementById(`list-${selectedBlock}`)?.classList.remove('active');
@@ -535,14 +584,12 @@ const blocks = [
     listItem.classList.add('active');
     listItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 
-    // show result panel
     const b = blocks[i];
     resultName.textContent = b.name;
     resultDesc.textContent = b.desc;
     resultTag.textContent  = 'Tauranga Campus';
     resultPanel.style.display = 'block';
 
-    // update search
     searchInput.value = b.name;
     clearBtn.style.display = 'block';
     suggestions.style.display = 'none';
@@ -562,33 +609,21 @@ const blocks = [
 
   clearBtn.addEventListener('click', clearSelection);
 
-  // Search / suggestions
   searchInput.addEventListener('input', () => {
     const q = searchInput.value.trim().toLowerCase();
     clearBtn.style.display = q ? 'block' : 'none';
-
     if (!q) { suggestions.style.display = 'none'; return; }
-
-    const matches = blocks
-      .map((b, i) => ({ ...b, i }))
-      .filter(b => b.name.toLowerCase().includes(q));
-
+    const matches = blocks.map((b, i) => ({ ...b, i })).filter(b => b.name.toLowerCase().includes(q));
     if (!matches.length) { suggestions.style.display = 'none'; return; }
-
     suggestions.innerHTML = matches.map(b =>
-      `<div class="suggestion-item" data-index="${b.i}">
-        <span class="s-icon">📍</span>${b.name}
-      </div>`
+      `<div class="suggestion-item" data-index="${b.i}"><span class="s-icon">📍</span>${b.name}</div>`
     ).join('');
-
     suggestions.querySelectorAll('.suggestion-item').forEach(el => {
       el.addEventListener('click', () => selectBlock(+el.dataset.index));
     });
-
     suggestions.style.display = 'block';
   });
 
-  // keyboard nav
   searchInput.addEventListener('keydown', e => {
     const items = suggestions.querySelectorAll('.suggestion-item');
     const active = suggestions.querySelector('.suggestion-item.active');
@@ -610,7 +645,6 @@ const blocks = [
     }
   });
 
-  // close suggestions on outside click
   document.addEventListener('click', e => {
     if (!e.target.closest('.search-wrap')) suggestions.style.display = 'none';
   });
